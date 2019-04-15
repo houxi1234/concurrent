@@ -230,9 +230,9 @@
 
 ##### JMM内存模型
 
-多线程的通讯  1、共享内存（堆内存）  2、消息传递
+------
 
- 
+
 
 ##### volatile
 
@@ -271,9 +271,7 @@ public class Volatile_001 {
 
 ```x = 0, y = 0```
 
-内存屏障
 
-优化屏障和内存屏障
 
 ##### CPU层面的内存屏障
 
@@ -297,17 +295,9 @@ loadload
 
 
 
-##### JMM层面
-
-loadload barrier
-
-storestore barrier
-
-loadstore barrier
-
-storeload barrer
-
 ###### ```volatile```保证可见性
+
+###### 对一个volatile变量的读，总是能看到（任意线程）对这个volatile变量最后的写入
 
 ```java
 public class Volatile_002 {
@@ -327,7 +317,154 @@ public class Volatile_002 {
 }
 ```
 
-synchronized
+##### ```volatile```不能保证原子性
+
+###### 对任意单个volatile变量的读/写具有原子性，但类似于volatile++这种复合操作不具有原子性。
+
+```
+
+对一个原子递增的操作，会分为三个步骤：1.读取volatile变量的值到local；2.增加变量的值；3.把local的值写回让
+其他线程可见
+```
+
+> ​        假如某个时刻变量inc的值为10，
+>  　　线程1对变量进行自增操作，线程1先读取了变量inc的原始值，然后线程1被阻塞了；
+>  　　然后线程2对变量进行自增操作，线程2也去读取变量inc的原始值，由于线程1只是对变量inc进行读取操作，而没有对变量进行修改操作，所以不会导致线程2的工作内存中缓存变量inc的缓存行无效，所以线程2会直接去主存读取inc的值，发现inc的值时10，然后进行加1操作，并把11写入工作内存，最后写入主存。
+>  　　然后线程1接着进行加1操作，由于已经读取了inc的值，注意此时在线程1的工作内存中inc的值仍然为10，所以线程1对inc进行加1操作后inc的值为11，然后将11写入工作内存，最后写入主存。
+>  　　那么两个线程分别进行了一次自增操作后，inc只增加了1。
+
+> 
+>
+> ------
+>
+> 
+
+##### synchronized
+
+###### 加锁方式
+
+1. 修饰实例方法
+
+   当前实例加锁
+
+2. 静态方法
+
+   当前类加锁
+
+3. 修饰代码块
+
+   对指定对象加锁
 
 
 
+###### synchronized括号后面的对象
+
+​	synchronized扩后后面的对象是一把锁，在java中任意一个对象都可以成为锁，简单来说，我们把object比喻是一个key，拥有这个key的线程才能执行这个方法，拿到这个key以后在执行方法过程中，这个key是随身携带的，并且只有一把。如果后续的线程想访问当前方法，因为没有key所以不能访问只能在门口等着，等之前的线程把key放回
+去。所以，synchronized锁定的对象必须是同一个，如果是不同对象，就意味着是不同的房间的钥匙，对于访问者
+来说是没有任何影响的。
+
+###### synchronized的锁的原理
+
+​	jdk1.6以后对synchronized锁进行了优化，包含偏向锁、轻量级锁、重量级锁; 在了解synchronized锁之前，我们需要了解两个重要的概念，一个是对象头、另一个是monitor
+
+###### Java对象头
+
+​	在Hotspot虚拟机中，对象在内存中的布局分为三块区域：对象头、实例数据和对齐填充；Java对象头是实现
+synchronized的锁对象的基础，一般而言，synchronized使用的锁对象是存储在Java对象头里。它是轻量级锁和偏
+向锁的关键
+
+###### Mawrk Word
+
+略
+
+###### Monitor
+
+略
+
+##### synchronized的锁升级和获取过程
+
+锁的级别从低到高逐步升级， 无锁->偏向锁->轻量级锁->重量级锁
+
+##### 自旋锁（CAS）
+
+​	自旋锁就是让不满足条件的线程等待一段时间，而不是立即挂起。看持有锁的线程是否能够很快释放锁。怎么自旋呢？其实就是一段没有任何意义的循环。
+​	虽然它通过占用处理器的时间来避免线程切换带来的开销，但是如果持有锁的线程不能在很快释放锁，那么自旋的线程就会浪费处理器的资源，因为它不会做任何有意义的工作。所以，自旋等待的时间或者次数是有一个限度的，如果自旋超过了定义的时间仍然没有获取到锁，则该线程应该被挂起。
+
+##### 偏向锁
+
+​	大多数情况下，锁不仅不存在多线程竞争，而且总是由同一线程多次获得，为了让线程获得锁的代价更低而引入了偏向锁。当一个线程访问同步块并获取锁时，会在对象头和栈帧中的锁记录里存储锁偏向的线程ID，以后该线程在进入和退出同步块时不需要进行CAS操作来加锁和解锁，只需简单地测试一下对象头的Mark Word里是否存储着指
+向当前线程的偏向锁。如果测试成功，表示线程已经获得了锁。如果测试失败，则需要再测试一下Mark Word中偏
+向锁的标识是否设置成1（表示当前是偏向锁）：如果没有设置，则使用CAS竞争锁；如果设置了，则尝试使用CAS
+将对象头的偏向锁指向当前线程
+
+##### 轻量级锁
+
+​	引入轻量级锁的主要目的是在没有多线程竞争的前提下，减少传统的重量级锁使用操作系统互斥量产生的性能消耗。当关闭偏向锁功能或者多个线程竞争偏向锁导致偏向锁升级为轻量级锁，则会尝试获取轻量级锁
+
+##### 重量级锁
+
+​	重量级锁通过对象内部的监视器（monitor）实现，其中monitor的本质是依赖于底层操作系统的Mutex Lock实
+现，操作系统实现线程之间的切换需要从用户态到内核态的切换，切换成本非常高。
+
+------
+
+
+
+##### ```wait```和```notify```
+
+```java
+//notify 唤醒线程
+public class NotifyDemo extends Thread{
+    private Object lock;
+
+    public NotifyDemo(Object lock) {
+        this.lock = lock;
+    }
+    @Override
+    public void run() {
+        synchronized (lock){
+            System.out.println("开始执行 thread notify");
+            lock.notify();
+            System.out.println("执行结束 thread notify");
+        }
+    }
+}
+```
+
+```java
+//wait 使线程等待
+public class WaitDemo extends Thread{
+    private Object lock;
+    public WaitDemo(Object lock) {
+        this.lock = lock;
+    }
+    @Override
+    public void run() {
+        synchronized (lock){
+            System.out.println("开始执行 thread wait");
+            try {
+                lock.wait();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println("执行结束 thread wait");
+        }
+    }
+    public static void main(String[] args) {
+        Object lock = new Object();
+        new WaitDemo(lock).start();
+        new NotifyDemo(lock).start();
+    }
+}
+```
+
+> ###### 执行结果:
+>
+> 开始执行 thread wait
+> 开始执行 thread notify
+> 执行结束 thread notify
+> 执行结束 thread wait
+
+##### ```wait```和```notify```的原理
+
+​	调用```wait```方法，首先会获取监视器锁，获得成功以后，会让当前线程进入等待状态进入等待队列并且释放锁；然后当其他线程调用```notify```或者```notifyall```以后，会选择从等待队列中唤醒任意一个线程，而执行完```notify```方法以后，并不会立马唤醒线程，原因是当前的线程仍然持有这把锁，处于等待状态的线程无法获得锁。必须要等到当前的线程执行完按```monitorexit```指令以后，也就是锁被释放以后，处于等待队列中的线程就可以开始竞争锁了。
