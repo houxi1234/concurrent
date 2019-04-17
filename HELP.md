@@ -468,3 +468,253 @@ public class WaitDemo extends Thread{
 ##### ```wait```和```notify```的原理
 
 ​	调用```wait```方法，首先会获取监视器锁，获得成功以后，会让当前线程进入等待状态进入等待队列并且释放锁；然后当其他线程调用```notify```或者```notifyall```以后，会选择从等待队列中唤醒任意一个线程，而执行完```notify```方法以后，并不会立马唤醒线程，原因是当前的线程仍然持有这把锁，处于等待状态的线程无法获得锁。必须要等到当前的线程执行完按```monitorexit```指令以后，也就是锁被释放以后，处于等待队列中的线程就可以开始竞争锁了。
+
+
+
+#### 同步锁
+
+#### Lock
+
+Lock是一个接口，核心的两个方法lock和unlock，有ReentrantLock、ReentrantReadWriteLock实现方法
+
+#### ReentrantLock
+
+重入锁，表示支持重新进入的锁。如果当前线程t1通过调用lock方法获取了锁之后，再次调用lock，是
+不会再阻塞去获取锁的，直接增加重试次数就行了。
+
+```java
+public class LockDemo {
+
+    private static int count = 0;
+    static Lock lock = new ReentrantLock();
+
+    public static void inc() {
+        lock.lock();
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        count++;
+        lock.unlock();
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        for (int i = 0; i < 1000; i++) {
+            new Thread(() -> {
+                LockDemo.inc();
+            }).start();
+        }
+        Thread.sleep(3000);
+        System.out.println("result:" + count);
+    }
+}
+```
+
+分类：
+
+- ```非公平的重入锁```
+
+  先请求不一定先获取锁，就是不公平的
+
+  #### ```NonfairSync.lock```
+
+  ```java
+  final void lock() {
+  	if (compareAndSetState(0, 1)) //这是跟公平锁的主要区别,一上来就试探锁是否空闲,如果可以插队，则设置获得锁的线程为当前线程
+  //exclusiveOwnerThread属性是AQS从父类AbstractOwnableSynchronizer中继承的属性，用来保存当前占用同步状态的线程
+  	setExclusiveOwnerThread(Thread.currentThread());
+  	else
+  		acquire(1); //尝试去获取锁
+  }
+  
+  ```
+
+  ```compareAndSetState```，这个方法在前面提到过了，再简单讲解一下，通过cas算法去改变state的值，而这个state是什么呢？ 在AQS中存在一个变量```state```，对于```ReentrantLock```来说，如果state=0表示无锁状态、如果state>0表示有锁状态。
+  所以在这里，是表示当前的state如果等于0，则替换为1，如果替换成功表示获取锁成功了
+  由于ReentrantLock是可重入锁，所以持有锁的线程可以多次加锁，经过判断加锁线程就是当前持有锁的线程时（即```exclusiveOwnerThread==Thread.currentThread()）```，即可加锁，每次加锁都会将state的值+1，state等于几，就代表当前持有锁的线程加了几次锁;
+
+  解锁时每解一次锁就会将``state```减1，```state```减到0后，锁就被释放掉，这时其它线程可以加锁；
+
+  #### AbstractQueuedSynchronizer.acquire
+
+  如果CAS操作未能成功，说明state已经不为0，此时继续acquire(1)操作,acquire是AQS中的方法 当多个线程同时进入这个方法时，首先通过cas去修改state的状态，如果修改成功表示竞争锁成功，竞争失败的，tryAcquire会返回false
+  这个方法的主要作用是
+  Ø 尝试获取独占锁，获取成功则返回，否则
+  Ø 自旋获取锁，并且判断中断标识，如果中断标识为true，则设置线程中断
+  Ø addWaiter方法把当前线程封装成Node，并添加到队列的尾部
+
+  。。。
+
+  。。。
+
+  。。。
+
+- ```公平的重入锁```:先对锁进行获取的请求一定先被满足获得锁，这就是公平锁
+
+- 区别：
+
+  锁的公平性是相对于获取锁的顺序而言的，如果是一个公平锁，那么锁的获取顺序就应该符合请求的绝对时间顺序，也就是FIFO。 在上面分析的例子来说，只要CAS设置同步状态成功，则表示当前线程获取了锁，而公平锁则不一样，差异点有两个，非公平锁在获取锁的时候，会先通过CAS进行抢占，而公平锁则不会
+
+#### ReentrantReadWriteLock
+
+```读写锁```，同一时刻允许多个线程访问，但是线程在进行写的时候，所有的读或写都会被阻塞。
+
+```java
+public class LockDemo_2 {
+    
+    static Map<String, Object> cacheMap = new HashMap<>();
+    static ReadWriteLock rw = new ReentrantReadWriteLock();
+    static Lock read = rw.readLock();
+    static Lock write = rw.writeLock();
+    
+    public static final Object get(String key) {
+        System.out.println("开始读取数据");
+        //读锁
+        read.lock(); 
+        try {
+            return cacheMap.get(key);
+        } finally {
+            read.unlock();
+        }
+    }
+
+    public static final Object put(String key, Object value) {
+        //写锁
+        write.lock();
+        System.out.println("开始写数据");
+        try {
+            return cacheMap.put(key, value);
+        } finally {
+            write.unlock();
+        }
+    }
+}
+```
+
+ ###  Lock与synchronized对比
+
+| Lock                             | synchronized                                             |
+| -------------------------------- | -------------------------------------------------------- |
+| 类                               | 关键词                                                   |
+| 灵活性高，可以控制锁的释放和获取 | 被动释放，出现异常或者同步代码块执行完成之后，才会释放锁 |
+| 可判断状态                       | 无法判断状态                                             |
+| 可实现公平锁、非公平锁           | 只有非公平锁                                             |
+| 需手动unlock                     | 被动释放                                                 |
+
+#### AQS
+
+Lock之所以能实现线程安全的锁，主要的核心是AQS(AbstractQueuedSynchronizer),AbstractQueuedSynchronizer提供了一个FIFO队列，可以看做是一个用来实现锁以及其他需要同步功能的框架。这里简称该类为AQS。AQS的使用依靠继承来完成，子类通过继承自AQS并实现所需的方法来管理同步状态。例如常见的ReentrantLock，CountDownLatch等AQS的两种功能
+
+从使用上来说，AQS的功能可以分为两种：独占和共享。
+
+独占锁模式下，每次只能有一个线程持有锁，比如前面给大家演示的ReentrantLock就是以独占方式实现的互斥锁
+
+共享锁模式下，允许多个线程同时获取锁，并发访问共享资源，比如ReentrantReadWriteLock。
+
+很显然，独占锁是一种悲观保守的加锁策略，它限制了读/读冲突，如果某个只读线程获取锁，则其他读线程都只能等待，这种情况下就限制了不必要的并发性，因为读操作并不会影响数据的一致性。共享锁则是一种乐观锁，它放宽了加锁策略，允许多个执行读操作的线程同时访问共享资源
+
+#### AQS的内部实现
+
+同步器依赖内部的同步队列（一个FIFO双向队列）来完成同步状态的管理，当前线程获取同步状态失败时，同步器
+会将当前线程以及等待状态等信息构造成为一个节点（Node）并将其加入同步队列，同时会阻塞当前线程，当同
+步状态释放时，会把首节点中的线程唤醒，使其再次尝试获取同步状态。
+
+```java
+//Node的主要属性如下
+static final class Node {
+	int waitStatus; //表示节点的状态，包含cancelled（取消）；condition 表示节点在等待condition也就是在condition队列中
+	Node prev; //前继节点
+	Node next; //后继节点
+	Node nextWaiter; //存储在condition队列中的后继节点
+	Thread thread; //当前线程
+}
+```
+
+AQS类底层的数据结构是使用双向链表，是队列的一种实现。包括一个```head```节点和一个```tail```节点，分别表示头结点和尾节点，其中头结点不存储```Thread```，仅保存```next```结点的引用
+
+当一个线程成功地获取了同步状态（或者锁），其他线程将无法获取到同步状态，转而被构造成为节点并加入到同
+步队列中，而这个加入队列的过程必须要保证线程安全，因此
+同步器提供了一个基于```CAS```的设置尾节点的方法：```compareAndSetTail(Node expect,Nodeupdate)```，它需要传递当前线程“认为”的尾节点和当前节点，只有设置成功后，当前节点才正式与之前的尾节点建立关联。
+
+同步队列遵循FIFO，首节点是获取同步状态成功的节点，首节点的线程在释放同步状态时，将会唤醒后继节点，而
+后继节点将会在获取同步状态成功时将自己设置为首节点。
+
+AQS中，除了本身的链表结构以外，还有一个很关键的功能，就是```CAS```，这个是保证在多线程并发的情况下保证线
+程安全的前提下去把线程加入到AQS中的方法,可以简单理解为乐观锁
+
+
+
+### Condition
+
+任意一个Java对象，都拥有一组监视器方法（定义在java.lang.Object上），主要包括wait()、notify()以及notifyAll()方法，这些方法与synchronized同步关键字配合，可以实现等待/通知模式
+JUC包提供了Condition来对锁进行精准控制，Condition是一个多线程协调通信的工具类，可以让某些线程一起等待某个条件（condition），只有满足条件时，线程才会被唤醒。
+
+```Condition```的作用是对锁进行更精确的控制。Condition中的```await()```方法相当于Object的```wait()```方法，Condition中的```signal()```方法相当于Object的```notify()```方法，Condition中的```signalAll()```相当于Object的```notifyAll()```方法。不同的是，Object中的```wait()```,```notify()```,```notifyAll()``方法是和"同步锁"(```synchronized```关键字)捆绑使用的；而```Condition```是需要与"互斥锁"/"共享锁"捆绑使用的。
+
+#### 示例
+
+```java
+public class ConditionDemoWait implements Runnable{
+    private Lock lock;
+    private Condition condition;
+    public ConditionDemoWait(Lock lock, Condition condition){
+        this.lock=lock;
+        this.condition=condition;
+    }
+    @Override
+    public void run() {
+        System.out.println("begin -ConditionDemoWait");
+        try {
+            lock.lock();
+            condition.await();
+            System.out.println("end - ConditionDemoWait");
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }finally {
+            lock.unlock();
+        }
+    }
+}
+```
+
+```java
+public class ConditionDemoSignal implements Runnable {
+    private Lock lock;
+    private Condition condition;
+
+    public ConditionDemoSignal(Lock lock, Condition condition) {
+        this.lock = lock;
+        this.condition = condition;
+    }
+
+    @Override
+    public void run() {
+        System.out.println("begin -ConditionDemoSignal");
+        try {
+            lock.lock();
+            condition.signal();
+            System.out.println("end - ConditionDemoSignal");
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public static void main(String[] args) {
+        Lock lock = new ReentrantLock();
+        Condition condition = lock.newCondition();
+        new Thread(new ConditionDemoWait(lock, condition)).start();
+        new Thread(new ConditionDemoSignal(lock, condition)).start();
+    }
+}
+```
+
+#### 结果
+
+```
+begin -ConditionDemoWait
+begin -ConditionDemoSignal
+end - ConditionDemoSignal
+end - ConditionDemoWait
+```
+
