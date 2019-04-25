@@ -328,10 +328,10 @@ public class Volatile_002 {
 ```
 
 > ​        假如某个时刻变量inc的值为10，
->  　　线程1对变量进行自增操作，线程1先读取了变量inc的原始值，然后线程1被阻塞了；
->  　　然后线程2对变量进行自增操作，线程2也去读取变量inc的原始值，由于线程1只是对变量inc进行读取操作，而没有对变量进行修改操作，所以不会导致线程2的工作内存中缓存变量inc的缓存行无效，所以线程2会直接去主存读取inc的值，发现inc的值时10，然后进行加1操作，并把11写入工作内存，最后写入主存。
->  　　然后线程1接着进行加1操作，由于已经读取了inc的值，注意此时在线程1的工作内存中inc的值仍然为10，所以线程1对inc进行加1操作后inc的值为11，然后将11写入工作内存，最后写入主存。
->  　　那么两个线程分别进行了一次自增操作后，inc只增加了1。
+> 　　线程1对变量进行自增操作，线程1先读取了变量inc的原始值，然后线程1被阻塞了；
+> 　　然后线程2对变量进行自增操作，线程2也去读取变量inc的原始值，由于线程1只是对变量inc进行读取操作，而没有对变量进行修改操作，所以不会导致线程2的工作内存中缓存变量inc的缓存行无效，所以线程2会直接去主存读取inc的值，发现inc的值时10，然后进行加1操作，并把11写入工作内存，最后写入主存。
+> 　　然后线程1接着进行加1操作，由于已经读取了inc的值，注意此时在线程1的工作内存中inc的值仍然为10，所以线程1对inc进行加1操作后inc的值为11，然后将11写入工作内存，最后写入主存。
+> 　　那么两个线程分别进行了一次自增操作后，inc只增加了1。
 
 > 
 >
@@ -716,5 +716,143 @@ begin -ConditionDemoWait
 begin -ConditionDemoSignal
 end - ConditionDemoSignal
 end - ConditionDemoWait
+```
+
+### 原子操作
+
+基本类型对应：```AtomicBoolean、AtomicInteger、AtomicLong```
+数组类型对应：```AtomicIntegerArray、AtomicLongArray、AtomicReferenceArray```
+引用类型对应：```AtomicReference、AtomicReferenceFieldUpdater、AtomicMarkableReference```
+字段类型对应：```AtomicIntegerFieldUpdater、AtomicLongFieldUpdater、AtomicStampedReference```
+
+
+
+### 线程池
+
+类似数据库连接池的作用，线程池是用来重复管理线程避免创建大量线程增加开销。
+
+合理的使用线程池：
+
+1. 降低创建线程和销毁线程的性能开销
+2. 合理设置线程池的大小可以避免线程数超出硬件资源瓶颈带来的问题（类似限流的作用）
+3. 线程是稀缺资源，如果无效的创建，会影响系统的稳定性
+
+#### summit和execute的区别
+
+1. ```execute``` 只能接受```Runable```类型的任务
+2. ```submit```不管是```Runable```还是```Callable```类型的任务都可以接受，但是```Runable```返回值均为```void```，所以使用```Future```的```get()```获得的还是```null```
+
+
+
+#### 最大线程数设置
+
+1. 工作线程不是越多越好
+2. 线程切换有开销，频换切换会使性能下降
+3. 调用sleep()函数不会占用CPU,accept()阻塞和recv()阻塞时也会让出cpu
+4. 影响线程数量的因素：**Java虚拟机本身：-Xms，-Xmx，-Xss**，**系统限制**
+
+### 线程池创建
+
+**【强制】**线程池不允许使用Executors去创建，而是通过```ThreadPoolExecutor```的方式，这样的处理方式让写的同学更明确线程池的运行规则，规避资源耗尽的风险。
+ 说明：```Executors```返回的线程池对象弊端如下：
+ 1）```FixedThreadPool和SingleThreadPool```：允许的请求队列长度为```Integer.MAX_VALUE```，可能会堆积大量的请求，从而导致```OOM```。
+ 2）```CacheThreadPool和ScheduledThreadPool```：允许创建线程数量为```Integer.MAX_VALUE```，可能会创建大量线程，从而导致```OOM```。
+
+使用**ThreadPoolExecutor** 创建线程
+
+```java
+public class executors {
+    /** 核心线程数 */
+    private static final int corePoolSize = 5;
+    /** 最大线程数 */
+    private static final int maximumPoolSize = 10;
+    /** 超时时间，特指超出核心线程数量以外的线程空余存活时间 */
+    private static final long keepAliveTime = 60L;
+    /** 存活时间单位*/
+    private static final TimeUnit unit = TimeUnit.SECONDS;
+    /** 保存执行任务的队列*/
+
+    public static void main(String[] args)  {
+        BlockingQueue<Runnable> workQueue = new LinkedBlockingQueue<>();
+        ThreadPoolExecutor threadPoolExecutor =
+                new ThreadPoolExecutor(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue);
+    }
+
+}
+```
+
+```java
+
+public ThreadPoolExecutor(int corePoolSize,
+                              int maximumPoolSize,
+                              long keepAliveTime,
+                              TimeUnit unit,
+                              BlockingQueue<Runnable> workQueue,
+                              RejectedExecutionHandler handler) {
+        this(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue,
+             Executors.defaultThreadFactory(), handler);
+    }
+
+```
+
+```
+
+```
+
+- **corePoolSize** :线程池的核心池大小，在创建线程池之后，线程池默认没有任何线程。当有任务过来的时候才会去创建创建线程执行任务。换个说法，线程池创建之后，线程池中的线程数为0，当任务过来就会创建一个线程去执行，直到线程数达到corePoolSize 之后，就会被到达的任务放在队列中（说明：除非调用了prestartAllCoreThreads()或者prestartCoreThread()方法，从这2个方法的名字就可以看出，是预创建线程的意思，即在没有任务到来之前就创建corePoolSize个线程或者一个线程）。
+
+- **maximumPoolSize** :线程池允许的最大线程数，表示最大能创建多少个线程。maximumPoolSize>=corePoolSize。
+
+- **keepAliveTime** :表示线程没有任务执行时最多保持多久时间会终止。默认情况下，只有当线程池中的线程数大于corePoolSize时，keepAliveTime才会起作用，直到线程池中的线程数不大于corePoolSize，即当线程池中的线程数大于corePoolSize时，如果一个线程空闲的时间达到keepAliveTime，则会终止，直到线程池中的线程数不超过corePoolSize。但是如果调用了allowCoreThreadTimeOut(boolean)方法，在线程池中的线程数不大于corePoolSize时，keepAliveTime参数也会起作用，直到线程池中的线程数为0；
+
+- **workQueue** ：一个阻塞队列，用来存储等待执行的任务，当线程池中的线程数超过它的corePoolSize的时候，线程会进入阻塞队列进行阻塞等待。通过workQueue，线程池实现了阻塞功能
+
+  - BlockingQueue 都可用于传输和保持提交的任务。可以使用此队列与池大小进行交互：
+  - 如果运行的线程少于 corePoolSize，则 Executor 始终首选添加新的线程，而不进行排队。
+  - 如果运行的线程等于或多于 corePoolSize，则 Executor 始终首选将请求加入队列，而不添加新的线程。
+  - 如果无法将请求加入队列，则创建新的线程，除非创建此线程超出 maximumPoolSize，在这种情况下，任务将被拒绝。
+    - 排队有三种通用策略：
+    - 直接提交。工作队列的默认选项是 ```SynchronousQueue```，它将任务直接提交给线程而不保持它们。在此，如果不存在可用于立即运行任务的线程，则试图把任务加入队列将失败，因此会构造一个新的线程。此策略可以避免在处理可能具有内部依赖性的请求集时出现锁。直接提交通常要求无界 ```maximumPoolSizes ```以避免拒绝新提交的任务。当命令以超过队列所能处理的平均数连续到达时，此策略允许无界线程具有增长的可能性。
+    - 无界队列。使用无界队列（例如，不具有预定义容量的 ```LinkedBlockingQueue```）将导致在所有 ```corePoolSize``` 线程都忙时新任务在队列中等待。这样，创建的线程就不会超过 ```corePoolSize```。（因此，```maximumPoolSize``` 的值也就无效了。）当每个任务完全独立于其他任务，即任务执行互不影响时，适合于使用无界队列；例如，在 Web 页服务器中。这种排队可用于处理瞬态突发请求，当命令以超过队列所能处理的平均数连续到达时，此策略允许无界线程具有增长的可能性。
+    - 有界队列。当使用有限的 ```maximumPoolSizes``` 时，有界队列（如``` ArrayBlockingQueue```）有助于防止资源耗尽，但是可能较难调整和控制。队列大小和最大池大小可能需要相互折衷：使用大型队列和小型池可以最大限度地降低 CPU 使用率、操作系统资源和上下文切换开销，但是可能导致人工降低吞吐量。如果任务频繁阻塞（例如，如果它们是 I/O 边界），则系统可能为超过您许可的更多线程安排时间。使用小型队列通常要求较大的池大小，CPU 使用率较高，但是可能遇到不可接受的调度开销，这样也会降低吞吐量。
+
+- **threadFactory** ：线程工厂，用来创建线程。
+
+- **handler** :表示当拒绝处理任务时的策略。
+
+  - handler有四个选择：
+
+    - ThreadPoolExecutor.AbortPolicy()   		抛出java.util.concurrent.RejectedExecutionException异常
+    - ThreadPoolExecutor.CallerRunsPolicy()          重试添加当前的任务，他会自动重复调用execute()方法
+    - ThreadPoolExecutor.DiscardOldestPolicy()     抛弃旧的任务
+
+    - ThreadPoolExecutor.DiscardPolicy()                抛弃当前的任务
+
+    
+
+##### 参数设置：任务的角度、空间时间
+
+1. 任务一般分为：**CPU密集型**、**IO密集型**、**混合型**，对于不同类型的任务需要分配不同大小的线程池
+
+   - CPU密集型：尽量使用较小的线程池，一般Cpu核心数+1；因为CPU密集型任务CPU的使用率很高，若开过多的线程，只能增加线程上下文的切换次数，带来额外的开销
+   - IO密集型：
+     - 方法一：可以使用较大的线程池，一般CPU核心数 * 2；IO密集型CPU使用率不高，可以让CPU等待IO的时候处理别的任务，充分利用cpu时间；
+     - 方法二：线程等待时间所占比例越高，需要越多线程。线程CPU时间所占比例越高，需要越少线程。举个例子：比如平均每个线程CPU运行时间为0.5s，而线程等待时间（非CPU运行时间，比如IO）为1.5s，CPU核心数为8，那么根据上面这个公式估算得到：((0.5+1.5)/0.5)*8=32。这个公式进一步转化为：
+       最佳线程数目 = （线程等待时间与线程CPU时间之比 + 1）* CPU数目
+       如何设置合理的队列大小
+
+2. 时间空间的限制
+
+   - 基于空间 ：比如队列可以占用10M内存，每个请求大小10K ，那么**workQueue**队列长度为1000合适
+
+   - 基于时间 ：对于单个线程，如果请求超时时间为1s，单个请求平均处理时间10ms，那么队列长度为100合适
+
+
+
+
+
+```
+
+
 ```
 
