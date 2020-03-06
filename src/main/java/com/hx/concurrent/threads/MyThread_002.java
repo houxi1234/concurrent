@@ -7,7 +7,7 @@ package com.hx.concurrent.threads;
 public class MyThread_002 implements Runnable {
     @Override
     public void run() {
-        System.out.println("多线程-->实现方式");
+//        System.out.println("多线程-->实现方式");
     }
     public static void main(String[] args) {
        new Thread(new MyThread_002()).start();
